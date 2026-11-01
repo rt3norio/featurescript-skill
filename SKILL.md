@@ -1,6 +1,6 @@
 ---
 name: featurescript
-description: Write, read, debug and explain Onshape FeatureScript — custom features (defineFeature, precondition UI, op*/ev*/q*/sk* calls), custom tables (defineTable), computed part properties, Feature Studio imports, reference parameters, manipulators and editing logic. Use whenever the user mentions FeatureScript, Onshape, Feature Studio, Part Studio code ("Show code"), a custom feature/.fs file, or calls like defineFeature, opExtrude, qCreatedBy, evVertexPoint, newSketchOnPlane, regenError. Bundles the full Onshape FeatureScript guide, language reference, tutorials and the whole Standard Library reference (217 modules, ~1300 symbols) as greppable markdown.
+description: Write, read, debug and explain Onshape FeatureScript — custom features (defineFeature, precondition UI, op*/ev*/q*/sk* calls), custom tables (defineTable), computed part properties, Feature Studio imports, reference parameters, manipulators and editing logic. Use whenever the user mentions FeatureScript, Onshape, Feature Studio, Part Studio code ("Show code"), a custom feature/.fs file, or calls like defineFeature, opExtrude, qCreatedBy, evVertexPoint, newSketchOnPlane, regenError. Also use to drive or automate Onshape itself from the user's browser (chrome-devtools MCP + Onshape REST API in-page): read Part Studios, push/commit Feature Studio code, test FeatureScript with the eval endpoint, create documents/tabs/blobs, add features, version and publish custom features. Bundles the full Onshape FeatureScript guide, language reference, tutorials and the whole Standard Library reference (217 modules, ~1300 symbols) as greppable markdown, plus an Onshape automation guide with injectable JS helpers.
 ---
 
 # FeatureScript (Onshape)
@@ -39,6 +39,23 @@ Reference map (all under `references/`):
 
 Key modules: `modeling/geomOperations` (all `op*`), `modeling/evaluate` (`ev*`), `modeling/query` (`q*`, EntityType, BodyType, GeometryType…), `modeling/sketch` (`sk*`), `modeling/primitives` (`fCuboid`…), `modeling/context` (Id rules, variables), `utilities/feature` (defineFeature, subfeatures, patterns, tracking), `utilities/error` (regenError, warnings), `utilities/valueBounds` (bounds consts), `utilities/manipulator`, `utilities/attributes`, `utilities/properties`, `utilities/table`, `utilities/instantiator`, `utilities/debug`, `utilities/containers`, `utilities/string`, `math/{units,vector,coordSystem,transform,math,curveGeometry,surfaceGeometry}`, `enums/*.gen.md` (BoundingType, BooleanOperationType, UIHint, DebugColor…).
 Std features (`features/extrude.md`, `fillet.md`, `hole.md`, sheetMetal*…) document feature-level definition maps, useful with `callSubfeatureAndProcessStatus`.
+
+## Driving Onshape from the browser
+
+Full guide: `onshape/ONSHAPE.md` (read it before touching the user's Onshape). Helpers: `onshape/onshape-helpers.js`, `onshape/wrap_js.py`.
+
+1. chrome-devtools MCP: `list_pages` → `select_page` on the `cad.onshape.com/documents/<d>/w/<w>/e/<e>` tab.
+2. Inject helpers: `evaluate_script(pageId, sourcePath="<base>/onshape/onshape-helpers.js", format="script")`; re-inject after any navigation.
+3. Same-origin `fetch('/api/v6/…')` uses the session; POST/DELETE need `X-XSRF-TOKEN` (cookie) → `__api(method, path, body)` handles it.
+4. Read: `__elements(d, w)`, `__features({d, w, e})` (sketch geometry in meters, params, states).
+5. Test without saving: `__fsEval('function(context is Context, queries) { … }', {d, w, e})` (`queries` must be `{}`); inline the feature body as a lambda + fixtures (harness in guide §3).
+6. Code: keep a local `.fs`, `python wrap_js.py f.fs __src out.js`, inject, `__pushFeatureStudio(window.__src, ids)` = save + commit; check returned specs (compiles, params, namespace).
+7. Add custom feature via API: `featureType` + `namespace` from specs and **all** parameters (defaults are not auto-filled).
+8. Publish: version via API, then UI (Versions panel → right-click version → Publish FeatureScript; needs public doc + a PDF + descriptions + used in a Part Studio + no warnings).
+9. Never `type_text` into the canvas (keys are shortcuts); use tooltips `data-bs-original-title` to find buttons.
+10. Confirm with the user before anything that changes their account (features, pushes, public, publish).
+
+Worked example: https://github.com/rt3norio/onshape-pegboard-pegs
 
 ## Mental model
 

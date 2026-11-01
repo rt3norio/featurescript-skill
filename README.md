@@ -2,10 +2,11 @@
 
 A [Claude Code](https://claude.com/claude-code) skill for writing, reading, debugging and explaining **Onshape FeatureScript**: custom features, custom tables, computed part properties, Feature Studio imports, manipulators and editing logic.
 
-The skill has two parts:
+The skill has three parts:
 
 1. **`SKILL.md`**: a compact field guide that Claude loads when a task involves FeatureScript. It covers the mental model, the feature skeleton, every precondition parameter kind, Id rules, the `q*`/`ev*`/`op*`/`sk*` vocabulary, errors, debugging and language gotchas.
 2. **`references/`**: the full official documentation as greppable markdown. That's the 17 guide and language-reference pages, both tutorials, and the whole Standard Library reference (217 modules, about 1,300 symbols, one file per module, plus a symbol index). `scripts/build_references.py` generates this folder from the live docs at <https://cad.onshape.com/FsDoc/>. This repo doesn't ship it (see [Docs and copyright](#docs-and-copyright)).
+3. **`onshape/`**: how Claude drives Onshape itself in your browser through the chrome-devtools MCP and Onshape's REST API, called from inside the page with your session. It reads Part Studios, pushes and commits Feature Studio code, tests FeatureScript with the eval endpoint without saving anything, creates documents, tabs and file uploads, adds features, and versions and publishes custom features. [`onshape/ONSHAPE.md`](onshape/ONSHAPE.md) is the guide, `onshape-helpers.js` holds the injectable helpers, and `wrap_js.py` turns local files into injectable JS. It's all based on a real project: [onshape-pegboard-pegs](https://github.com/rt3norio/onshape-pegboard-pegs).
 
 The main rule the skill gives Claude: **don't guess a std-library signature or definition-map key. Look it up.** FeatureScript calls take untyped maps (`opExtrude(context, id, { "entities" : …, "endBound" : … })`). A model working from memory gets those keys subtly wrong, and the code fails only at regeneration time inside Onshape. Looking the symbol up in the index and reading its entry before writing the call avoids that.
 
@@ -72,7 +73,19 @@ How Claude answers a lookup question:
      - `keepProfileOrientation` (boolean): [optional] …
 ```
 
-Claude Code can't edit Onshape directly. It writes the FeatureScript, and you paste it into a Feature Studio and press **Commit**. To debug, paste back the contents of the notices `{!}` flyout, or use *Monitor Part Studio* and paste what it shows.
+Without browser access, Claude writes the FeatureScript, and you paste it into a Feature Studio and press **Commit**. To debug, paste back the contents of the notices `{!}` flyout, or use *Monitor Part Studio* and paste what it shows.
+
+With the [chrome-devtools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) attached to a Chrome where you're logged in to Onshape, Claude does the loop itself (see [`onshape/ONSHAPE.md`](onshape/ONSHAPE.md)):
+
+```text
+inject onshape/onshape-helpers.js into the Onshape tab
+__features(ids)                 read the Part Studio you're working in
+__fsEval(script, ids)           run FeatureScript tests on throwaway geometry (nothing is saved)
+__pushFeatureStudio(src, ids)   save + commit the Feature Studio, check that it compiles
+__addFeature / __createVersion  only with your OK; publishing goes through the Versions panel
+```
+
+Example prompts: "Read my Part Studio and turn the peg I modeled into a custom feature", "Test the feature on a 4 × 3 in plate before I use it", "Publish it and add it to my toolbar".
 
 ---
 
@@ -91,6 +104,7 @@ Claude Code can't edit Onshape directly. It writes the FeatureScript, and you pa
 | Language | semicolons, no `++`, `^` and `~`, no truthiness, value semantics and `box`, map quirks, safe navigation, `->` call syntax, predicates, overloads, custom types, enums |
 | Imports & data | workspace vs. version imports, `BLOB_DATA` (CSV/JSON/text/image/BREP), Part Studio instantiation and configurations, Variable Studios |
 | Tables & properties | `defineTable` and `defineComputedPartProperty` templates and their constraints |
+| Driving Onshape | quick start and safety rules, pointing to `onshape/ONSHAPE.md`: XSRF header, re-injecting after navigation, the eval endpoint and test harness, pushing to a Feature Studio, sketch/extrude/custom-feature JSON, the publish requirements, UI gotchas |
 
 Every std-library function named in `SKILL.md` was checked against the generated symbol index.
 
@@ -101,6 +115,10 @@ Every std-library function named in `SKILL.md` was checked against the generated
 ```
 featurescript-skill/
 ├── SKILL.md                     # loaded by Claude Code (frontmatter: name, description)
+├── onshape/
+│   ├── ONSHAPE.md               # guide: driving Onshape via chrome-devtools MCP + in-page REST API
+│   ├── onshape-helpers.js       # inject with evaluate_script(sourcePath=…, format:"script")
+│   └── wrap_js.py               # local file (.fs/.svg/.png/.pdf) -> window.<var> = "…" for injection
 ├── scripts/
 │   └── build_references.py      # FsDoc HTML -> markdown (stdlib-only Python)
 └── references/                  # generated, git-ignored
