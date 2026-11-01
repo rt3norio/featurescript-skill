@@ -1,0 +1,4 @@
+# Generated from https://cad.onshape.com/FsDoc/ by scripts/build_references.py (Onshape copyright, not redistributed)
+references/
+__pycache__/
+*.pyc
