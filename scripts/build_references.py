@@ -28,7 +28,7 @@ CATEGORIES = {"Modeling": "modeling", "Math": "math", "Utilities": "utilities",
 
 
 def fetch(path):
-    req = urllib.request.Request(BASE + path, headers={"User-Agent": "featurescript-skill"})
+    req = urllib.request.Request(BASE + path, headers={"User-Agent": "onshape-skill"})
     with urllib.request.urlopen(req, timeout=120) as r:
         return r.read().decode("utf-8")
 
