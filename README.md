@@ -1,178 +1,108 @@
-# featurescript-skill
+# onshape-skill
 
-A [Claude Code](https://claude.com/claude-code) skill for writing, reading, debugging and explaining **Onshape FeatureScript**: custom features, custom tables, computed part properties, Feature Studio imports, manipulators and editing logic.
+A [Claude Code](https://claude.com/claude-code) skill for working in **Onshape** together with Claude: designing 3D-printable parts and assemblies, reading and editing Part Studios, and writing, testing and publishing **FeatureScript**.
 
-The skill has three parts:
+With the [chrome-devtools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) attached to a Chrome where you're logged in to Onshape, Claude works in your real documents. It calls Onshape's REST API from inside the page with your session, so there are no API keys or OAuth to set up. Without browser access it still writes FeatureScript for you to paste.
 
-1. **`SKILL.md`**: a compact field guide that Claude loads when a task involves FeatureScript. It covers the mental model, the feature skeleton, every precondition parameter kind, Id rules, the `q*`/`ev*`/`op*`/`sk*` vocabulary, errors, debugging and language gotchas.
-2. **`references/`**: the full official documentation as greppable markdown. That's the 17 guide and language-reference pages, both tutorials, and the whole Standard Library reference (217 modules, about 1,300 symbols, one file per module, plus a symbol index). `scripts/build_references.py` generates this folder from the live docs at <https://cad.onshape.com/FsDoc/>. This repo doesn't ship it (see [Docs and copyright](#docs-and-copyright)).
-3. **`onshape/`**: how Claude drives Onshape itself in your browser through the chrome-devtools MCP and Onshape's REST API, called from inside the page with your session. It reads Part Studios, pushes and commits Feature Studio code, tests FeatureScript with the eval endpoint without saving anything, creates documents, tabs and file uploads, adds features, and versions and publishes custom features. [`onshape/ONSHAPE.md`](onshape/ONSHAPE.md) is the guide, `onshape-helpers.js` holds the injectable helpers, and `wrap_js.py` turns local files into injectable JS. It's all based on a real project: [onshape-pegboard-pegs](https://github.com/rt3norio/onshape-pegboard-pegs).
+> Português: skill do Claude Code para Onshape. Modela peças para impressão 3D direto no seu Onshape (sketches e extrudes de verdade, criados por um script parametrizado), ajusta no lugar sem quebrar a montagem, faz test fit de tolerância, monta assembly com mates e exporta STL/3MF. Também escreve, testa e publica FeatureScript. Instalação: clone em `~/.claude/skills/onshape` e rode `scripts/build_references.py` uma vez.
 
-The main rule the skill gives Claude: **don't guess a std-library signature or definition-map key. Look it up.** FeatureScript calls take untyped maps (`opExtrude(context, id, { "entities" : …, "endBound" : … })`). A model working from memory gets those keys subtly wrong, and the code fails only at regeneration time inside Onshape. Looking the symbol up in the index and reading its entry before writing the call avoids that.
+---
 
-> Português: skill do Claude Code para FeatureScript (Onshape). O `SKILL.md` é um guia condensado. O script `scripts/build_references.py` baixa a documentação oficial e a converte em markdown pesquisável (guia, referência da linguagem, tutoriais e a Standard Library inteira). Instalação: clone em `~/.claude/skills/featurescript` e rode o script uma vez.
+## What it does
+
+| Mode | How Claude works |
+|---|---|
+| **Printable part** (holder, box, jig, multi-part kit) | Asks only the questions that change the design. Creates a new document, writes a local builder script with every dimension as a parameter, and runs it to create ordinary Part Studio features (sketches, extrudes, offset planes, chamfers) that you can open and edit by hand. Checks that every feature regenerates, measures part volumes and sizes, then screenshots and reports to you. Later changes edit the existing features in place, so part ids, assembly connectors and mates survive. Before parts that slot together, it models a tolerance test-fit coupon for you to print. Exports only after you approve the design. |
+| **Assembly** | Inserts the Part Studio and puts one mate connector per part at the world origin, so every part stays where it was modeled. Adds fastened and slider mates (with limits) and mate groups. Fixing a part and building exploded views happen in the UI. |
+| **Export** | Exports each part as STL through the translation API, then `stl_to_3mf.py` packs them into one 3MF. Each part is named, rotated to its print orientation and laid on the bed, ready for the slicer. |
+| **Custom feature** (FeatureScript) | Writes the `.fs` file, looking up every std-library call instead of guessing. Tests it against throwaway geometry with the FeatureScript eval endpoint, which saves nothing. Pushes and commits it to a Feature Studio, adds it to a Part Studio, then versions and publishes it. |
+| **Inspect / fix** | Reads Part Studio features, measures geometry with FeatureScript, renames parts and tabs, and edits sketches and parameters. |
+
+Main rules the skill gives Claude:
+- **Ask before anything outward-facing**: exporting for print, deleting tabs, making documents public, versions, publishing.
+- **Don't guess a FeatureScript std-library signature or definition-map key.** Look it up in the bundled reference.
+- **Edit models in place** instead of rebuilding them, so assemblies don't break.
 
 ---
 
 ## Install
 
-Requirements: Claude Code, Python 3.8+ (standard library only, no `pip install`), and network access to `cad.onshape.com` while building.
+Requirements: Claude Code, Python 3.8+ (standard library only), network access to `cad.onshape.com` while building the references. For the browser workflow you also need the chrome-devtools MCP connected to your Chrome.
 
 ```bash
 # macOS / Linux / Git Bash
-git clone https://github.com/rt3norio/featurescript-skill ~/.claude/skills/featurescript
-python ~/.claude/skills/featurescript/scripts/build_references.py
+git clone https://github.com/rt3norio/onshape-skill ~/.claude/skills/onshape
+python ~/.claude/skills/onshape/scripts/build_references.py
 ```
 
 ```powershell
 # Windows PowerShell
-git clone https://github.com/rt3norio/featurescript-skill "$env:USERPROFILE\.claude\skills\featurescript"
-python "$env:USERPROFILE\.claude\skills\featurescript\scripts\build_references.py"
+git clone https://github.com/rt3norio/onshape-skill "$env:USERPROFILE\.claude\skills\onshape"
+python "$env:USERPROFILE\.claude\skills\onshape\scripts\build_references.py"
 ```
 
-The build takes a few seconds and ends with:
+The build takes a few seconds and ends with `done: 17 guide pages, 2 tutorials, 217 modules, 1296 symbols -> …/references`. Start a new Claude Code session; `onshape` shows up in the skill list. You can also force it with `/onshape`.
 
-```
-done: 17 guide pages, 2 tutorials, 217 modules, 1296 symbols -> .../references
-```
-
-Start a new Claude Code session, and `featurescript` shows up in the skill list. To install it for one project only, clone into `<project>/.claude/skills/featurescript` instead.
-
-### Update
-
-```bash
-cd ~/.claude/skills/featurescript && git pull
-python scripts/build_references.py   # re-fetch the docs when Onshape releases a new std version
-```
-
-The build overwrites files in place and never deletes any. If Onshape removes a module, delete `references/` before rebuilding.
+Update: `git pull`, then rerun `build_references.py` when Onshape releases a new std version.
 
 ---
 
-## Usage
+## Example prompts
 
-There's nothing to call by hand. Claude picks the skill when a request mentions FeatureScript, Onshape, a Feature Studio, a custom feature or a `.fs` file, or uses calls like `defineFeature`, `opExtrude` or `qCreatedBy`. You can also force it with `/featurescript`.
-
-Example prompts:
-
-- "Write a custom feature that puts a counterbored hole at every selected vertex, with a lookup table for M3/M4/M5."
-- "Why does my feature fail on the second loop iteration?" The usual cause is a non-contiguous `Id` hierarchy, which the skill knows about.
-- "Turn this Part Studio code ("Show code") into a reusable feature with a length parameter and a flip toggle."
-- "Add a custom table listing the volume and material of every part."
-- "Add a linear manipulator that drives the `depth` parameter."
+- "My bread pan is 17.5 × 13.5 × 14 cm. Design a slicing guide in Onshape that I can 3D-print, with several slice thicknesses."
+- "Make the stop thinner, use a honeycomb pattern instead of the posts, keep both versions."
+- "Make a test fit with different clearances so we can pick the right one." Then: "0.1 was best for the big joint, use 0.2 for the removable pin."
+- "Create the assembly: fix the base, mate everything, add an exploded view."
+- "Approved, export the 3MF to my Desktop."
+- "Read my Part Studio and turn the peg I modeled into a custom feature, test it on a 4 × 3 in plate, then publish it."
 - "What keys does `opSweep` take, and which ones are optional?"
-
-How Claude answers a lookup question:
-
-```text
-1. Grep  references/lib/INDEX.md                     "opSweep"            -> modeling/geomOperations
-2. Grep  references/lib/modeling/geomOperations.md   "^### opSweep " -A 40
-3. Answer from that entry:
-     - `profiles` (Query): Edges and faces to sweep.
-     - `path` (Query): Edges that comprise the path along which to sweep. …
-     - `keepProfileOrientation` (boolean): [optional] …
-```
-
-Without browser access, Claude writes the FeatureScript, and you paste it into a Feature Studio and press **Commit**. To debug, paste back the contents of the notices `{!}` flyout, or use *Monitor Part Studio* and paste what it shows.
-
-With the [chrome-devtools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) attached to a Chrome where you're logged in to Onshape, Claude does the loop itself (see [`onshape/ONSHAPE.md`](onshape/ONSHAPE.md)):
-
-```text
-inject onshape/onshape-helpers.js into the Onshape tab
-__features(ids)                 read the Part Studio you're working in
-__fsEval(script, ids)           run FeatureScript tests on throwaway geometry (nothing is saved)
-__pushFeatureStudio(src, ids)   save + commit the Feature Studio, check that it compiles
-__addFeature / __createVersion  only with your OK; publishing goes through the Versions panel
-```
-
-Example prompts: "Read my Part Studio and turn the peg I modeled into a custom feature", "Test the feature on a 4 × 3 in plate before I use it", "Publish it and add it to my toolbar".
-
----
-
-## What the skill teaches Claude
-
-| Area | Content in `SKILL.md` |
-|---|---|
-| Model | Part Studio = FeatureScript `build` function; features = function calls; commit vs. live edits; regeneration triggers; determinism |
-| Skeleton | `FeatureScript N;` + std import, `annotation { "Feature Type Name" … }`, `defineFeature(function(context, id, definition) precondition {…} {…}, defaults)` |
-| Feature dialog | boolean / string / enum / `isLength` `isAngle` `isInteger` `isReal` `isAnything` / Query + `Filter` + `MaxNumberOfPicks` / lookup tables / arrays / groups / reference params (`PartStudioData`, `ImageData`, `TableData`, `JSONData`, `TextData`, `CADImportData`, `VariableStudioData`) / custom `LengthBoundSpec` / `UIHint` / conditional visibility / icons |
-| Interaction | editing logic function signature and arguments, manipulator change function, `addManipulators` |
-| Ids | hierarchy must be contiguous in history (the classic loop bug), allowed characters, `ANY_ID`, `unstableIdComponent`, `forEachEntity` |
-| Modeling | queries as criteria and their order caveats; evaluations; operations; primitives; std features as subfeatures; geometry value types; units; variables, attributes, properties |
-| Sketching | the coordinate-system → `newSketchOnPlane` → `sk*` → `skSolve` → region query → extrude/boolean/cleanup recipe |
-| Errors & debugging | `regenError`, warnings and infos, `setErrorEntities`, `try` / `try silent`, `debug()` (visible only with the dialog open), timers, Monitor, Profile, feature-pattern support |
-| Language | semicolons, no `++`, `^` and `~`, no truthiness, value semantics and `box`, map quirks, safe navigation, `->` call syntax, predicates, overloads, custom types, enums |
-| Imports & data | workspace vs. version imports, `BLOB_DATA` (CSV/JSON/text/image/BREP), Part Studio instantiation and configurations, Variable Studios |
-| Tables & properties | `defineTable` and `defineComputedPartProperty` templates and their constraints |
-| Driving Onshape | quick start and safety rules, pointing to `onshape/ONSHAPE.md`: XSRF header, re-injecting after navigation, the eval endpoint and test harness, pushing to a Feature Studio, sketch/extrude/custom-feature JSON, the publish requirements, UI gotchas |
-
-Every std-library function named in `SKILL.md` was checked against the generated symbol index.
 
 ---
 
 ## Repository layout
 
 ```
-featurescript-skill/
-├── SKILL.md                     # loaded by Claude Code (frontmatter: name, description)
+onshape-skill/
+├── SKILL.md                     # loaded by Claude Code: modes, connecting, printable-part and FeatureScript workflows
 ├── onshape/
-│   ├── ONSHAPE.md               # guide: driving Onshape via chrome-devtools MCP + in-page REST API
-│   ├── onshape-helpers.js       # inject with evaluate_script(sourcePath=…, format:"script")
-│   └── wrap_js.py               # local file (.fs/.svg/.png/.pdf) -> window.<var> = "…" for injection
+│   ├── ONSHAPE.md               # the guide (§1-9 API/FeatureScript/publishing, §10-15 printed parts, assemblies, export, test fits)
+│   ├── onshape-helpers.js       # __api, __features, __fsEval, __pushFeatureStudio, __uploadBlob, UI helpers
+│   ├── onshape-modeling.js      # __om: sketch/extrude/plane/fillet/chamfer, edit in place, measure, rename, export STL
+│   ├── onshape-assembly.js      # __oa: insert, mate connectors at the origin, mates, groups
+│   ├── stl_to_3mf.py            # STL JSON -> named, oriented, laid-out 3MF
+│   └── wrap_js.py               # local file -> injectable JS
+├── featurescript/
+│   └── FEATURESCRIPT.md         # FeatureScript field guide
 ├── scripts/
 │   └── build_references.py      # FsDoc HTML -> markdown (stdlib-only Python)
-└── references/                  # generated, git-ignored
-    ├── guide/                   # intro, feature-types, uispec, output, variables, modeling, tables,
-    │                            # computed-part-properties, imports, debugging-in-feature-studios,
-    │                            # tokens, type-tags, top-level, syntax, annotations, exceptions, relational
-    ├── tutorials/               # 1-create-a-slot-feature, 2-add-sketch-geometry
-    └── lib/
-        ├── INDEX.md             # "## modeling/geomOperations" + comma-separated symbol list
-        ├── modeling/            # geomOperations (op*), evaluate (ev*), query (q*), sketch (sk*), primitives, context
-        ├── math/                # units, vector, coordSystem, transform, curve/surface geometry, matrix…
-        ├── utilities/           # feature, error, valueBounds, manipulator, attributes, properties, table, instantiator, debug…
-        ├── features/            # std feature definitions: extrude, fillet, hole, sweep, sheetMetal*…
-        └── enums/               # BoundingType, BooleanOperationType, UIHint, DebugColor… (*.gen.md)
+└── references/                  # generated, git-ignored: guide/, tutorials/, lib/ (INDEX.md + one file per std module)
 ```
 
-Format of a library entry:
+The JS helpers are injected into the Onshape tab with `evaluate_script(pageId, sourcePath="<skill>/onshape/<file>.js", format="script")`. They're plain same-origin `fetch` calls to `/api/v6`. Writes add the `X-XSRF-TOKEN` header from the session cookie.
 
-```markdown
-### opExtrude (context is Context, id is Id, definition is map)
+### FeatureScript reference
 
-Extrudes one or more edges or faces in a given direction with one or two end conditions. …
-- `definition` (`map`)
-  - `entities` (`Query`): Edges and faces to extrude.
-  - `direction` (`Vector`): The 3d direction in which to extrude. EX: `evOwnerSketchPlane(context, {"entity" : entities}).normal` …
-  - `endBound` (`BoundingType`): The type of bound at the end of the extrusion. Cannot be `SYMMETRIC` or `UP_TO_VERTEX`. EX: `BoundingType.BLIND`
-  - `endDepth` (`ValueWithUnits`): Required if `endBound` is `BLIND`. How far from the `entities` to extrude. EX: `1 * inch`
-  - `startBound` (`BoundingType`): [optional] The type of start bound. …
+`build_references.py` uses only `urllib` and `html.parser`. It converts the guide and tutorial pages to markdown, and splits `library.html` into one file per std module (`### signature` headings, parameter tables as bullet lists with `Optional` / `Required if …` / `EXAMPLE` notes), plus a symbol index. Claude answers lookup questions like this:
+
+```text
+1. Grep  references/lib/INDEX.md                     "opSweep"            -> modeling/geomOperations
+2. Grep  references/lib/modeling/geomOperations.md   "^### opSweep " -A 40
+3. Answer from that entry
 ```
-
-### How the converter works
-
-`build_references.py` uses only `urllib` and `html.parser`:
-
-- **Guide and tutorial pages**: headings become `#`, `<pre>` blocks become fenced code with indentation kept, lists become `-`, and site navigation is dropped.
-- **`library.html`**: the page is split at its `module-*.fs` headers into one file per module, grouped by the page's sections (Modeling, Math, Utilities, Onshape features, enums). Each `node-signature` becomes a `###` heading. Parameter tables become nested bullet lists, with `Optional` / `Required if …` and `EXAMPLE` notes kept inline. Operator overloads, which have no name in the HTML, are labeled `operator(...)`.
-- Output uses LF line endings on every OS, so diffs between rebuilds stay readable.
-- If the page layout changes and no module parses, the script exits non-zero.
 
 ---
 
 ## Docs and copyright
 
-The FeatureScript documentation belongs to Onshape (PTC) and carries no open license, so this repo doesn't redistribute it. You download it yourself from the public site when you run the build script, and `references/` is in `.gitignore`. The MIT license below covers only the code and text written for this repo (`SKILL.md`, `scripts/`, this README).
-
-The Standard Library *source code* is public inside Onshape, in the document named "std". To read an implementation, ctrl/cmd-click a symbol in a Feature Studio.
+The FeatureScript documentation belongs to Onshape (PTC) and has no open license, so this repo doesn't redistribute it. The build script downloads it from the public site, and `references/` is in `.gitignore`. The MIT license covers only this repository's own content.
 
 ## Limitations
 
-- Claude can't run FeatureScript. Regeneration only happens inside Onshape, so test in a Part Studio and paste the notices back.
-- The docs don't list `ErrorStringEnum` values. Use custom `regenError("message")` strings, or check the values with Feature Studio autocomplete.
-- The tutorials' `FeatureScript 1890;` header is only an example. Keep the version line your own Feature Studio template inserts. The `FeatureScript N;` line and the std import version must match.
-- The docs show a snapshot of the latest std version. Features pinned to older std versions may behave differently.
+- The Onshape work needs the chrome-devtools MCP and a logged-in Chrome tab. Without it, Claude only writes code and instructions.
+- A few things have no working API and go through the UI: fixing a part in an assembly, exploded views, and publishing FeatureScript. They're more fragile because Claude has to find buttons from screenshots.
+- Free Onshape accounts can only create public documents.
+- The docs don't list `ErrorStringEnum` values. Use custom `regenError("message")` strings.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). This applies to this repository's own content only. Onshape and FeatureScript are trademarks of PTC Inc. This project is not affiliated with or endorsed by Onshape or PTC.
+MIT, see [LICENSE](LICENSE). Onshape and FeatureScript are trademarks of PTC Inc. This project is not affiliated with or endorsed by Onshape or PTC.
